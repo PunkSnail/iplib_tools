@@ -10,6 +10,9 @@
 #define MAGIC_STRING "PUNK"
 
 #ifdef __APPLE__ /* a workaround for missing pthread spinlocks on macOS */
+
+typedef int32_t pthread_spinlock_t;
+
 static int pthread_spin_init(pthread_spinlock_t *lock, int pshared)
 {
     __asm__ __volatile__ ("" ::: "memory");
@@ -44,10 +47,22 @@ static int pthread_spin_unlock(pthread_spinlock_t *lock)
 }
 #endif /* __APPLE__ */
 
+/* struct for reading the IP library */
+struct iplib_reader {
+    char *db_mem;   //db binary string for memory search mode
+	uint32_t index_start;	// index area start offset
+	uint32_t total_blocks;	// total index blocks number
+    bool is_punk_lib; // the punk iplib starts with "PUNK"
+    char describe_cache[MAX_DESCRIBE_LENGTH];
+    pthread_spinlock_t spin_lock;
+};
+
 // refer: https://github.com/lionsoul2014/ip2region
 
 /* PUNK iplib 数据结构:
  * iplib 数据结构:
+ *  所有长度偏移等整数信息均为小端序(Little-Endian)
+ *
  * 1. 文件头:
  * +------------+------------+------------+------------+
  * | 4 bytes    | 4 bytes    | 4 bytes    | 4 bytes    |

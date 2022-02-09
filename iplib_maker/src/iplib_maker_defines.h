@@ -83,6 +83,8 @@ struct data_block_t
  * https://github.com/lionsoul2014/ip2region/tree/master/maker/java
  *
  * iplib 数据结构:
+ *  所有长度偏移等整数信息均为小端序(Little-Endian)
+ *
  * 1. 文件头:
  * +------------+------------+------------+------------+
  * | 4 bytes    | 4 bytes    | 4 bytes    | 4 bytes    |

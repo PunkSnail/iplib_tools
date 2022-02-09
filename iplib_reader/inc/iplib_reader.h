@@ -11,20 +11,7 @@
 extern "C" {
 #endif
 
-#ifdef __APPLE__
-typedef int32_t pthread_spinlock_t;
-#endif
-
-/* struct for reading the IP library
- * refer: https://github.com/lionsoul2014/ip2region */
-typedef struct {
-    char *db_mem;   //db binary string for memory search mode
-	uint32_t index_start;	// index area start offset
-	uint32_t total_blocks;	// total index blocks number
-    bool is_punk_lib; // the punk iplib starts with "PUNK"
-    char describe_cache[MAX_DESCRIBE_LENGTH];
-    pthread_spinlock_t spin_lock;
-} iplib_reader_t;
+typedef struct iplib_reader iplib_reader_t;
 
 /* create a new iplib_reader_t instance */
 iplib_reader_t *iplib_reader_create(const char *db_file_path);

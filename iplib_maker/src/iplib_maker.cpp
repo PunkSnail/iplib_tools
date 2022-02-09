@@ -35,7 +35,8 @@ bool iplib_maker::set_iplib_maker(const char *source)
 static FILE *open_iplib(const char *output, const uint32_t header_size)
 {
     FILE *iplib_w = fopen(output, "w+");
-    if (NULL == iplib_w) {
+    if (NULL == iplib_w)
+    {
         return NULL;
     }
     fseek(iplib_w, 0, SEEK_SET);
@@ -84,10 +85,10 @@ static bool iplib_line_parser(string line, uint32_t *p_start,
         default:
             break;
         }
-        line.erase(0, pos + 1); // + length of "|"
+        line.erase(0, pos + 1); // skip the "|"
     }
     uint32_t len = (uint32_t)p_data->length();
-    if (*p_start > *p_end || 0 == *p_end || 0 == len || len > 0xFFFF)
+    if (*p_start > *p_end || 0 == *p_end || 0 == len || len > 0xFFFD)
     {
         return false;
     }
@@ -113,7 +114,8 @@ void iplib_maker::write_data_block(uint32_t start_ip, uint32_t end_ip,
     else // add new data_block_t
     {
         data_offset = (uint32_t)ftell(iplib_w);
-        if (data_len >= 0xFF) {
+        if (data_len >= 0xFF)
+        {
             fwrite(&data_len, sizeof(char), 2, iplib_w);
         }
         fwrite(data.c_str(), sizeof(char), data.length(), iplib_w);
@@ -198,7 +200,9 @@ write_header_blocks(uint32_t start, FILE *iplib_w)
     fseek(iplib_w , 0, SEEK_END); // reset now
 }
 
-uint32_t calc_header_size(ifstream *p_stream, uint32_t limits)
+/* 计算固定头加上预留的头部跳表空间长度
+ * 考虑到索引区单个元素大小固定, 且有序, 跳表意义不大, 所以目前不使用 */
+uint32_t unuse_calc_header_size(ifstream *p_stream, uint32_t limits)
 {
     string line, data;
     uint32_t line_count = 0;
@@ -264,9 +268,7 @@ bool run_iplib_maker(iplib_maker *p_maker,
 {
     bool result = false;
 
-    result = p_maker->set_iplib_maker(source_file);
-
-    if (false == result)
+    if (false == p_maker->set_iplib_maker(source_file))
     {
         debug_print("set database maker failed\n");
         return result;
