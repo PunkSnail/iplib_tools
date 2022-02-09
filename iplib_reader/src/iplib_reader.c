@@ -4,11 +4,47 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
-
-// refer: https://github.com/lionsoul2014/ip2region
+#include <string.h>
 
 #define INDEX_BLOCK_LENGTH 12
 #define MAGIC_STRING "PUNK"
+
+#ifdef __APPLE__ /* a workaround for missing pthread spinlocks on macOS */
+static int pthread_spin_init(pthread_spinlock_t *lock, int pshared)
+{
+    __asm__ __volatile__ ("" ::: "memory");
+    *lock = 0;
+    return 0;
+}
+
+static int pthread_spin_destroy(pthread_spinlock_t *lock)
+{
+    return 0;
+}
+
+static int pthread_spin_lock(pthread_spinlock_t *lock)
+{
+    while (1)
+    {
+        for (int i = 0; i < 10000; i++)
+        {
+            if (__sync_bool_compare_and_swap(lock, 0, 1)) {
+                return 0;
+            }
+        }
+        sched_yield();
+    }
+}
+
+static int pthread_spin_unlock(pthread_spinlock_t *lock)
+{
+    __asm__ __volatile__ ("" ::: "memory");
+    *lock = 0;
+    return 0;
+}
+#endif /* __APPLE__ */
+
+// refer: https://github.com/lionsoul2014/ip2region
 
 /* PUNK iplib 数据结构:
  * iplib 数据结构:
@@ -72,14 +108,17 @@ iplib_reader_t *iplib_reader_create(const char *db_file_path)
     iplib_reader_t *p_reader = (iplib_reader_t*)
         calloc(1, sizeof(iplib_reader_t));
 
+    pthread_spin_init(&p_reader->spin_lock, 0);
     // open the db file
     FILE *db_fd = fopen(db_file_path, "rb");
-    if (db_fd == NULL) {
+    if (db_fd == NULL)
+    {
         fprintf(stderr, "failed to open the db file %s\n",
                 db_file_path);
         goto create_error_end;
     }
-    if (!load_db_to_mem(p_reader, db_fd)) {
+    if (!load_db_to_mem(p_reader, db_fd))
+    {
         fprintf(stderr, "failed to load the db file to memory\n");
         goto create_error_end;
     }
@@ -94,8 +133,8 @@ create_error_end:
     return NULL;
 }
 
-static inline char *
-get_data_info(iplib_reader_t *p_reader, uint32_t ip, uint16_t *p_len)
+static inline uint32_t
+get_data_offset(iplib_reader_t *p_reader, uint32_t ip)
 {
     char *p_data = NULL;
     uint32_t offset = 0, blocks = p_reader->total_blocks;
@@ -103,39 +142,23 @@ get_data_info(iplib_reader_t *p_reader, uint32_t ip, uint16_t *p_len)
     for (uint32_t curr, i = 0; i <= blocks; )
     {
         curr = (i + blocks) >> 1;
-
         p_data = p_reader->db_mem +
             p_reader->index_start + curr * INDEX_BLOCK_LENGTH;
 
-        if (ip < *((uint32_t*)p_data)) { // less then start
+        if (ip < *((uint32_t*)p_data))
+        {   // less then start
             blocks = curr - 1;
-        } else {
-            if (ip > *((uint32_t*)(p_data + 4))) {
-                i = curr + 1;
-            } else {
-                offset = *((uint32_t*)(p_data + 8));
-                break;
-            }
+            continue;
         }
+        if (ip > *((uint32_t*)(p_data + 4)))
+        {
+            i = curr + 1;
+            continue;
+        }
+        offset = *((uint32_t*)(p_data + 8));
+        break;
     }
-    if (offset == 0)  {
-        return NULL;
-    }
-    p_data = p_reader->db_mem + (offset & 0x00FFFFFF);
-    *p_len = (uint8_t)((offset >> 24) & 0xFF);
-
-    if (false == p_reader->is_punk_lib && *p_len > 4)
-    {
-        *p_len = (uint16_t)(*p_len - 4);
-        p_data += 4; /* skip the int32_t id field */
-    }
-    if (p_reader->is_punk_lib && *p_len == 0xFF)
-    {
-        memcpy(p_len, p_data, sizeof(uint16_t));
-        *p_len = (uint16_t)(*p_len - 2);
-        p_data += 2; /* skip length field */
-    }
-    return p_data;
+    return offset;
 }
 
 /* return: C string describe
@@ -145,12 +168,24 @@ const char *iplib_reader_search(iplib_reader_t *p_reader, uint32_t ip,
                                 char *output, uint32_t output_len)
 {
     const char *result = "empty";
-    uint16_t data_len = 0;
-    char *p_data = get_data_info(p_reader, ip, &data_len);
 
-    if (NULL == p_data)
-    {
+    uint32_t offset = get_data_offset(p_reader, ip);
+    if (0 == offset) {
         return result;
+    }
+    char *p_data = p_reader->db_mem + (offset & 0x00FFFFFF);
+    uint16_t data_len = (uint8_t)((offset >> 24) & 0xFF);
+
+    if (false == p_reader->is_punk_lib && data_len > 4)
+    {
+        data_len = (uint16_t)(data_len - 4);
+        p_data += 4; /* skip the int32_t id field */
+    }
+    if (p_reader->is_punk_lib && data_len == 0xFF)
+    {
+        memcpy(&data_len, p_data, sizeof(uint16_t));
+        data_len = (uint16_t)(data_len - 2);
+        p_data += 2; /* skip length field */
     }
     if (output && data_len < output_len)
     {
@@ -169,7 +204,14 @@ const char *iplib_reader_search(iplib_reader_t *p_reader, uint32_t ip,
 
 const char *iplib_reader_search_s(iplib_reader_t *p_reader, uint32_t ip)
 {
-     return iplib_reader_search(p_reader, ip, NULL, 0);
+    const char *result = NULL;
+    pthread_spin_lock(&p_reader->spin_lock);
+
+    result = iplib_reader_search(p_reader, ip, NULL, 0);
+
+    pthread_spin_unlock(&p_reader->spin_lock);
+
+    return result;
 }
 
 /* destroy the specifield iplib_reader object */
@@ -178,8 +220,10 @@ void iplib_reader_destroy(iplib_reader_t *p_reader)
     if (p_reader == NULL) {
         return;
     }
+    pthread_spin_destroy(&p_reader->spin_lock);
     // free the db binary string
-    if (p_reader->db_mem != NULL ) {
+    if (p_reader->db_mem != NULL)
+    {
         free(p_reader->db_mem);
         p_reader->db_mem = NULL;
     }
