@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
 project(iplib_reader)
 
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -Wconversion -g -Wall")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11 -Wconversion -g -Wall")
 
 include_directories(inc)
 
