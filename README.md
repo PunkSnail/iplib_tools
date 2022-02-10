@@ -15,7 +15,7 @@ Options:
 
 # iplib_maker
 `iplib_maker` 读取 `qqwry2txt` 生成的 txt (单行内容示例:"42.158.0.0|42.158.255.255|<描述内容>"), 构建 IP 库文件, 相较于[原始数据](https://github.com/wisdomfusion/qqwry.dat) 具有性能优势.
-数据结构参考 [ip2region](https://github.com/lionsoul2014/ip2region), 删除了头部跳表 (索引区元素大小固定, 且有序, 此跳表意义不大), 同时删除了 "city_id" 这样的字段, 仅保留 key (IP 区间) - value (描述内容), 复杂内容可转为 json 存入 value, 最大支持长度为 65535 字节
+数据结构参考 [ip2region](https://github.com/lionsoul2014/ip2region), 删除了头部跳表 (索引区元素大小固定, 且有序, 此跳表意义不大), 同时删除了 "city_id" 这样的字段, 仅保留 key (IP 区间) - value (描述内容), 复杂内容可转为 json 存入 value, 最大支持长度为 65533 (0xFFFF - 长度字段占位)
 
 ```
 iplib 数据结构:
@@ -30,7 +30,7 @@ iplib 数据结构:
 2. 数据区: 仅当数据索引区 "数据长度" 字段等于 0xFF 时, 数据区的 "数据长度"
 字段才会存在
   +---------+----------------------+
-  | 2 bytes | max 65535 bytes      | ...
+  | 2 bytes | max 65533 bytes      | ...
   +---------+----------------------+
    数据长度 | 描述字符串
 
